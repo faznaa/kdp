@@ -43,9 +43,10 @@ export default function Editor({
       const name = file.name.toLowerCase();
       const isTxt = name.endsWith(".txt");
       const isDocx = name.endsWith(".docx");
+      const isPdf = name.endsWith(".pdf");
 
-      if (!isTxt && !isDocx) {
-        setUploadError("Unsupported file type. Please upload a .txt or .docx file.");
+      if (!isTxt && !isDocx && !isPdf) {
+        setUploadError("Unsupported file type. Please upload a .txt, .docx, or .pdf file.");
         return;
       }
 
@@ -56,7 +57,7 @@ export default function Editor({
           const text = await file.text();
           onTextChange(text);
           setUploadedFile(file.name);
-        } else {
+        } else if (isDocx) {
           const arrayBuffer = await file.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer });
           if (result.value) {
@@ -64,6 +65,16 @@ export default function Editor({
             setUploadedFile(file.name);
           } else {
             setUploadError("Could not extract text from this DOCX file.");
+          }
+        } else {
+          const { extractTextFromPDF } = await import("@/lib/pdf-extractor");
+          const arrayBuffer = await file.arrayBuffer();
+          const text = await extractTextFromPDF(arrayBuffer);
+          if (text.trim()) {
+            onTextChange(text);
+            setUploadedFile(file.name);
+          } else {
+            setUploadError("Could not extract text from this PDF. It may be image-based (scanned).");
           }
         }
       } catch (err) {
@@ -148,7 +159,7 @@ export default function Editor({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".docx,.txt"
+          accept=".docx,.txt,.pdf"
           onChange={handleFileChange}
           className="hidden"
         />
@@ -202,7 +213,8 @@ export default function Editor({
                 />
               </svg>
               <span className="text-xs text-gray-400">
-                Drop a <span className="text-gray-300 font-medium">.docx</span>{" "}
+                Drop a <span className="text-gray-300 font-medium">.docx</span>,{" "}
+                <span className="text-gray-300 font-medium">.pdf</span>,{" "}
                 or <span className="text-gray-300 font-medium">.txt</span> file
                 here, or click to browse
               </span>
