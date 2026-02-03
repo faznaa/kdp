@@ -218,9 +218,15 @@ export default function InstantPage() {
     <div className="min-h-screen bg-[#0f1117] text-gray-100">
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900/50">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-center">
-          
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+          <a href="/" className="flex items-center gap-2 text-gray-400 hover:text-gray-200 transition">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            <span className="text-sm">Back to Editor</span>
+          </a>
           <h1 className="text-lg font-bold text-amber-500">Instant KDP</h1>
+          <div className="w-24" /> {/* Spacer for centering */}
         </div>
       </header>
 

@@ -218,17 +218,26 @@ export async function generatePDF(options: PDFOptions): Promise<Blob> {
     const marginLeft = getMarginLeft();
     let cursorY = marginTopPt + bleedOffsetTop;
 
-    // Section title
+    // Section title with alignment support
     doc.setFont(fontFamily, "bold");
     doc.setFontSize(fontSize + 6);
     const titleLines = doc.splitTextToSize(section.title, textWidth);
     const titleLineHeight = (fontSize + 6) * lineHeightMult;
+    const headingAlignment = section.style?.headingAlignment || "left";
 
     // Add some space before title
     cursorY += titleLineHeight;
 
     for (const tLine of titleLines) {
-      doc.text(tLine, marginLeft, cursorY);
+      let titleX = marginLeft;
+      if (headingAlignment === "center") {
+        const tw = doc.getTextWidth(tLine);
+        titleX = (pageWPt - tw) / 2;
+      } else if (headingAlignment === "right") {
+        const tw = doc.getTextWidth(tLine);
+        titleX = pageWPt - marginOutsidePt - tw;
+      }
+      doc.text(tLine, titleX, cursorY);
       cursorY += titleLineHeight;
     }
 
@@ -239,8 +248,99 @@ export async function generatePDF(options: PDFOptions): Promise<Blob> {
     doc.setFont(fontFamily, "normal");
     doc.setFontSize(fontSize);
 
+    // Helper to render text with inline formatting (bold, italic)
+    const renderFormattedText = (text: string, x: number, y: number) => {
+      // Parse simple HTML tags for bold and italic
+      const parts: { text: string; bold: boolean; italic: boolean }[] = [];
+      let remaining = text;
+      let currentBold = false;
+      let currentItalic = false;
+
+      while (remaining.length > 0) {
+        // Find next tag
+        const boldOpenIdx = remaining.indexOf("<strong>");
+        const boldCloseIdx = remaining.indexOf("</strong>");
+        const italicOpenIdx = remaining.indexOf("<em>");
+        const italicCloseIdx = remaining.indexOf("</em>");
+        const bOpenIdx = remaining.indexOf("<b>");
+        const bCloseIdx = remaining.indexOf("</b>");
+        const iOpenIdx = remaining.indexOf("<i>");
+        const iCloseIdx = remaining.indexOf("</i>");
+
+        const indices = [
+          { idx: boldOpenIdx, tag: "<strong>", action: () => (currentBold = true) },
+          { idx: boldCloseIdx, tag: "</strong>", action: () => (currentBold = false) },
+          { idx: italicOpenIdx, tag: "<em>", action: () => (currentItalic = true) },
+          { idx: italicCloseIdx, tag: "</em>", action: () => (currentItalic = false) },
+          { idx: bOpenIdx, tag: "<b>", action: () => (currentBold = true) },
+          { idx: bCloseIdx, tag: "</b>", action: () => (currentBold = false) },
+          { idx: iOpenIdx, tag: "<i>", action: () => (currentItalic = true) },
+          { idx: iCloseIdx, tag: "</i>", action: () => (currentItalic = false) },
+        ].filter((i) => i.idx !== -1);
+
+        if (indices.length === 0) {
+          // No more tags, add remaining text
+          if (remaining.length > 0) {
+            parts.push({ text: remaining, bold: currentBold, italic: currentItalic });
+          }
+          break;
+        }
+
+        // Find earliest tag
+        indices.sort((a, b) => a.idx - b.idx);
+        const earliest = indices[0];
+
+        // Add text before tag
+        if (earliest.idx > 0) {
+          parts.push({
+            text: remaining.substring(0, earliest.idx),
+            bold: currentBold,
+            italic: currentItalic,
+          });
+        }
+
+        // Apply tag action
+        earliest.action();
+
+        // Move past tag
+        remaining = remaining.substring(earliest.idx + earliest.tag.length);
+      }
+
+      // Render parts
+      let currentX = x;
+      for (const part of parts) {
+        const fontStyle = part.bold && part.italic ? "bolditalic" :
+                         part.bold ? "bold" :
+                         part.italic ? "italic" : "normal";
+        doc.setFont(fontFamily, fontStyle);
+        doc.text(part.text, currentX, y);
+        currentX += doc.getTextWidth(part.text);
+      }
+      doc.setFont(fontFamily, "normal");
+    };
+
+    // Determine content to render (prefer HTML content if available)
+    let contentToRender = section.content;
+    if (section.htmlContent) {
+      // Convert HTML to simplified format for PDF
+      // Remove <p> tags and convert to newlines, keep <strong>, <em>, <b>, <i>
+      contentToRender = section.htmlContent
+        .replace(/<p>/gi, "")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<u>/gi, "")
+        .replace(/<\/u>/gi, "")
+        .trim();
+    }
+
     // Render body text
-    const paragraphs = section.content.split("\n");
+    const paragraphs = contentToRender.split("\n");
+    const hasFormatting = section.htmlContent && (
+      section.htmlContent.includes("<strong>") ||
+      section.htmlContent.includes("<em>") ||
+      section.htmlContent.includes("<b>") ||
+      section.htmlContent.includes("<i>")
+    );
 
     for (const para of paragraphs) {
       if (para.trim() === "") {
@@ -253,18 +353,33 @@ export async function generatePDF(options: PDFOptions): Promise<Blob> {
         continue;
       }
 
-      const wrappedLines = doc.splitTextToSize(para, textWidth);
+      // For formatted text, we need to handle wrapping differently
+      const plainText = para.replace(/<[^>]+>/g, "");
+      const wrappedLines = doc.splitTextToSize(plainText, textWidth);
 
-      for (const wLine of wrappedLines) {
+      if (hasFormatting && wrappedLines.length === 1) {
+        // Single line with formatting - render with formatting
         if (cursorY + lineHeightPt > pageHPt - marginBottomPt + bleedOffsetTop) {
           if (section.showPageNumber) addPageNumber();
           newPage();
           cursorY = marginTopPt + bleedOffsetTop;
         }
-
         const ml = getMarginLeft();
-        doc.text(wLine, ml, cursorY);
+        renderFormattedText(para, ml, cursorY);
         cursorY += lineHeightPt;
+      } else {
+        // Multiple lines or no formatting - use plain text
+        for (const wLine of wrappedLines) {
+          if (cursorY + lineHeightPt > pageHPt - marginBottomPt + bleedOffsetTop) {
+            if (section.showPageNumber) addPageNumber();
+            newPage();
+            cursorY = marginTopPt + bleedOffsetTop;
+          }
+
+          const ml = getMarginLeft();
+          doc.text(wLine, ml, cursorY);
+          cursorY += lineHeightPt;
+        }
       }
     }
 

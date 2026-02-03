@@ -97,6 +97,8 @@ export function assembleRenderableSections(
       kind: "chapter",
       title: ch.title,
       content: ch.content,
+      htmlContent: ch.htmlContent,
+      style: ch.style,
       showPageNumber: true,
     });
   }

@@ -20,10 +20,18 @@ export interface Margins {
   outside: number;
 }
 
+export type HeadingAlignment = "left" | "center" | "right";
+
+export interface ChapterStyle {
+  headingAlignment: HeadingAlignment;
+}
+
 export interface Chapter {
   id: string;
   title: string;
   content: string;
+  htmlContent?: string; // Rich text HTML content (optional)
+  style?: ChapterStyle; // Chapter-specific styling
 }
 
 export interface BookProject {
@@ -45,7 +53,10 @@ export type SectionKind =
   | "chapter"
   | "about-author"
   | "also-by"
-  | "acknowledgments";
+  | "acknowledgments"
+  | "blank-page";
+
+export type ChapterStartSide = "any" | "left" | "right";
 
 export interface MatterSection {
   kind: SectionKind;
@@ -70,6 +81,8 @@ export interface RenderableSection {
   kind: SectionKind;
   title: string;
   content: string;
+  htmlContent?: string; // Rich text HTML content
+  style?: ChapterStyle; // Section-specific styling
   showPageNumber: boolean;
 }
 
